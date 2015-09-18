@@ -8,17 +8,22 @@
 # docker run -p 5601:5601 -p 9200:9200 -p 5000:5000 -it --name elk <repo-user>/elk
 
 FROM phusion/baseimage
-MAINTAINER Sebastien Pujadas http://pujadas.net
+MAINTAINER Ozzy Johnson oswald.johnson@gsa.gov
+# Forked from the work of Sebastien Pujadas http://pujadas.net
 ENV REFRESHED_AT 2015-08-15
 
 ###############################################################################
 #                                INSTALLATION
 ###############################################################################
 
-### install Elasticsearch
+### Install Packages
+# We use java7 here to work around and issue with the current very of java8
+# available from webupd8 and the cloud-aws plugin for Elasticsearch.
 
 RUN \
-    apt-get update \
+    echo oracle-java7-installer shared/accepted-oracle-license-v1-1 select true | debconf-set-selections \
+    && add-apt-repository -y ppa:webupd8team/java \
+    && apt-get update \
         -qq \
     && apt-get install \
         -qq \
@@ -28,10 +33,15 @@ RUN \
     curl \
     python-software-properties \
     software-properties-common \
+    oracle-java7-installer=7u80+7u60arm-0~webupd8~1 \
 
 # Clean up packages.
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /var/cache/oracle-jdk7-installer
+
+# Define commonly used JAVA_HOME variable
+ENV JAVA_HOME /usr/lib/jvm/java-7-oracle
 
 # Borrow gosu setup code from the docker-library Elasticsearch image found here:
 # https://github.com/docker-library/elasticsearch/blob/master/1.5/Dockerfile
@@ -41,22 +51,6 @@ RUN curl -o /usr/local/bin/gosu -SL "https://github.com/tianon/gosu/releases/dow
         && gpg --verify /usr/local/bin/gosu.asc \
         && rm /usr/local/bin/gosu.asc \
         && chmod +x /usr/local/bin/gosu
-
-# Add Java.
-RUN \
-  echo oracle-java7-installer shared/accepted-oracle-license-v1-1 select true | debconf-set-selections \
-  && add-apt-repository -y ppa:webupd8team/java \
-  && apt-get update \
-       -qq \
-  && apt-get install \
-       -qq \
-       -y oracle-java7-installer=7u80+7u60arm-0~webupd8~1 \
-  && apt-get clean \
-  && rm -rf /var/lib/apt/lists/* \
-  && rm -rf /var/cache/oracle-jdk7-installer
-
-# Define commonly used JAVA_HOME variable
-ENV JAVA_HOME /usr/lib/jvm/java-7-oracle
 
 # Install Elasticsearch.
 ENV ES_PKG_NAME elasticsearch-1.7.1
@@ -68,8 +62,9 @@ RUN \
   && rm -f $ES_PKG_NAME.tar.gz \
   && mv /$ES_PKG_NAME /elasticsearch
 
-# Set up default config.
-ADD elasticsearch.yml /elasticsearch/config/elasticsearch.yml
+# Create the Elasticsearch user.
+RUN groupadd -r elasticsearch \
+  && useradd -r -s /usr/sbin/nologin -c "Elasticsearch service user"  -g elasticsearch elasticsearch
 
 ### install Logstash
 
@@ -107,7 +102,7 @@ RUN sed -i -e 's#^KIBANA_HOME=$#KIBANA_HOME='$KIBANA_HOME'#' /etc/init.d/kibana 
  && chmod +x /etc/init.d/kibana
 
 ###
-# Plugins
+# Elasticsearch Plugins
 ###
 
 # http-basic plugin.

@@ -6,7 +6,9 @@
 CONFIG_DIR=/elasticsearch/config
 LUMBERJACK_DIR=/etc/logstash/conf.d
 
-# Set the required login credentials.
+# Set the required login credentials so that this image can be used as an
+# authenticated Cloud Foundry service container and component can access
+# Elasticsearch while the http-basic plugin is in use.
 echo "Running setup..."
 if [[ -e /.firstrun ]]; then
   echo "Looks like a first run..."
@@ -20,7 +22,15 @@ if [[ -e /.firstrun ]]; then
   rm /.firstrun
 fi
 
-/elasticsearch/bin/elasticsearch -d
+# Make sure our unprivileged user can access the Elasticsearch data.
+echo "Preparing to drop root..."
+chown -R elasticsearch:elasticsearch /data
+
+# Drop root perms via gosu for security.
+echo "Dropping root and starting Elasticsearch..."
+gosu elasticsearch /elasticsearch/bin/elasticsearch -d
+
+# Start logstash.
 service logstash start
 
 # wait for elasticsearch to start up - https://github.com/elasticsearch/kibana/issues/3077
